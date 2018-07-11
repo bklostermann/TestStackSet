@@ -7,6 +7,7 @@
         "PrivateSubnets": "subnet-e442c4ad,subnet-d55d8af8,subnet-ad16c7f6",
         "PublicSubnets": "subnet-4f00dd14,subnet-705f885d,subnet-0844c241",
         "RunTasks": "No",
-        "VPC": "vpc-daadafbd"
+        "VPC": "vpc-daadafbd",
+        "RedisSecurityGroup": "sg-542f3f2e"
     }
   }
