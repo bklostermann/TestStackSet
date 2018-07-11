@@ -7,5 +7,5 @@ phases:
 
 artifacts:
   files:
-    - test.txt
+    - configuration.json
     - environment-infrastructure/**/*
