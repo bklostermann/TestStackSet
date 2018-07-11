@@ -1,0 +1,293 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+  "Description" : "Creates an internal ECS service (not internet facing)",
+  "Parameters" : {
+    "ApplicationName" : {
+      "Description" : "An Application name that will be prefixed to resource names",
+      "Type" : "String"
+    },
+    "EnvironmentName" : {
+      "Description" : "Environment to create resources in",
+      "Type" : "String"
+    },
+    "ServiceName" : {
+      "Description" : "Name of the service (will be used in naming convention of other resources)",
+      "Type" : "String"
+    },
+    "ServiceShortName" : {
+      "Description" : "Short name of service as some resources don't allow for long names",
+      "Type" : "String"
+    },
+    "ClusterName" : {
+      "Description" : "ECS cluster to create the service in",
+      "Type" : "String"
+    },
+    "TargetGroupVPC" : {
+      "Description" : "VPC where targets are located",
+      "Type" : "String",
+      "Default" : "vpc-e1f6c086"
+    },
+    "TargetGroupPort" : {
+      "Description" : "Port of target group",
+      "Type" : "Number",
+      "Default" : 5001
+    },
+    "TargetGroupProtocol" : {
+      "Description" : "Protocol of target group",
+      "Type" : "String",
+      "Default" : "HTTPS"
+    },
+    "ApplicationLoadBalancerArn" : {
+      "Description" : "The application load balancer's ARN to add listener to",
+      "Type" : "String",
+      "Default" : ""
+    },
+    "ListenerPort" : {
+      "Description" : "The listener port",
+      "Type" : "Number"
+    },
+    "ListenerProtocol" : {
+      "Description" : "The listener protocol",
+      "Type" : "String",
+      "Default" : "HTTPS"
+    },
+    "TargetGroupHealthCheck" : {
+      "Description" : "Health check path for target group",
+      "Type" : "String",
+      "Default" : "/healthcheck"
+    },
+    "TargetGroupHealthCheckProtocol" : {
+      "Description" : "Health check portocal (HTTP or HTTPS)",
+      "Type" : "String",
+      "Default" : "HTTPS"
+    },
+    "DesiredCount" : {
+      "Description" : "The number of simultaneous tasks that you want to run on the cluster",
+      "Type" : "Number",
+      "Default" : 1
+    },
+    "MaximumPercent" : {
+      "Description" : "Upper limit of the number of tasks allowed to run during a deployment",
+      "Type" : "Number",
+      "Default" : 200
+    },
+    "MinimumHealthyPercent" : {
+      "Description" : "Lower limit of the number of tasks allowed to run during a deployment",
+      "Type" : "Number",
+      "Default" : 50
+    },
+    "ServiceRole" : {
+      "Description" : "Role that allows the ECS container agent to make calls to your load balancer",
+      "Type" : "String"
+    },
+    "ContainerPort" : {
+      "Description" : "The port number on the container to direct LB traffic to.",
+      "Type" : "Number"
+    },
+    "ContainerImage" : {
+      "Description" : "Docker image for container",
+      "Type" : "String"
+    },
+    "ContainerImageTag" : {
+      "Description" : "Docker image tag for container",
+      "Type" : "String",
+      "Default" : "latest"
+    },
+    "ContainerCPU" : {
+      "Description" : "CPU of container",
+      "Type" : "Number",
+      "Default" : 1
+    },
+    "ContainerMemoryHardLimit" : {
+      "Description" : "Hard limit for container memory",
+      "Type" : "Number",
+      "Default" : 768
+    },
+    "ContainerMemorySoftLimit" : {
+      "Description" : "Soft limit for container memory",
+      "Type" : "Number",
+      "Default" : 512
+    },
+    "CloudwatchLogsGroupPrefix" : {
+      "Description" : "Prefix of the Cloudwatch log group name",
+      "Type" : "String",
+      "Default" : "/aws/ecs"
+    },
+    "LogGroup" : {
+      "Description" : "Cloudwatch log group name",
+      "Type" : "String"
+    }
+  },
+  "Mappings" : { },
+  "Conditions" : { },
+  "Resources" : {
+    "ServiceLogGroup" : {
+      "Type" : "AWS::Logs::LogGroup",
+      "Properties" : {
+        "LogGroupName" : {
+          "Fn::Sub" : "${LogGroup}/${ServiceName}"
+        },
+        "RetentionInDays" : 90
+      }
+    },
+    "TargetGroup" : {
+      "Type" : "AWS::ElasticLoadBalancingV2::TargetGroup",
+      "Properties" : {
+        "Name" : {
+          "Fn::Sub" : "tg-${ApplicationName}-${EnvironmentName}-${ServiceShortName}"
+        },
+        "Protocol" : {
+          "Ref" : "TargetGroupProtocol"
+        },
+        "Port" : {
+          "Ref" : "TargetGroupPort"
+        },
+        "TargetType" : "instance",
+        "VpcId" : {
+          "Ref" : "TargetGroupVPC"
+        },
+        "HealthCheckPath" : {
+          "Ref" : "TargetGroupHealthCheck"
+        },
+        "HealthCheckProtocol" : {
+          "Ref" : "TargetGroupHealthCheckProtocol"
+        }
+      }
+    },
+    "Listener" : {
+      "Type" : "AWS::ElasticLoadBalancingV2::Listener",
+      "Properties" : {
+        "LoadBalancerArn" : {
+          "Ref" : "ApplicationLoadBalancerArn"
+        },
+        "Port" : {
+          "Ref" : "ListenerPort"
+        },
+        "Protocol" : {
+          "Ref" : "ListenerProtocol"
+        },
+        "DefaultActions" : [ {
+          "TargetGroupArn" : {
+            "Ref" : "TargetGroup"
+          },
+          "Type" : "forward"
+        } ]
+      }
+    },
+    "TaskDefinition" : {
+      "Type" : "AWS::ECS::TaskDefinition",
+      "Properties" : {
+        "Family" : {
+          "Fn::Sub" : "${ApplicationName}-${EnvironmentName}-${ServiceName}"
+        },
+        "ContainerDefinitions" : [ {
+          "Name" : {
+            "Ref" : "ServiceName"
+          },
+          "Image" : {
+            "Fn::Join" : [ ":", [ {
+              "Ref" : "ContainerImage"
+            }, {
+              "Ref" : "ContainerImageTag"
+            } ] ]
+          },
+          "Cpu" : {
+            "Ref" : "ContainerCPU"
+          },
+          "Memory" : {
+            "Ref" : "ContainerMemoryHardLimit"
+          },
+          "MemoryReservation" : {
+            "Ref" : "ContainerMemorySoftLimit"
+          },
+          "PortMappings" : [ {
+            "ContainerPort" : {
+              "Ref" : "ContainerPort"
+            }
+          } ],
+          "Environment" : [ {
+            "Name" : "Environment",
+            "Value" : {
+              "Ref" : "EnvironmentName"
+            }
+          }, {
+            "Name" : "ConfigLocation",
+            "Value" : "s3"
+          } ],
+          "DockerLabels" : {
+            "environment" : {
+              "Ref" : "EnvironmentName"
+            },
+            "name" : {
+              "Ref" : "ServiceName"
+            }
+          },
+          "LogConfiguration" : {
+            "LogDriver" : "awslogs",
+            "Options" : {
+              "awslogs-group" : {
+                "Ref" : "ServiceLogGroup"
+              },
+              "awslogs-region" : {
+                "Ref" : "AWS::Region"
+              },
+              "awslogs-stream-prefix" : {
+                "Ref" : "ServiceName"
+              }
+            }
+          }
+        } ]
+      }
+    },
+    "Service" : {
+      "Type" : "AWS::ECS::Service",
+      "DependsOn" : [ "Listener" ],
+      "Properties" : {
+        "Cluster" : {
+          "Ref" : "ClusterName"
+        },
+        "DesiredCount" : {
+          "Ref" : "DesiredCount"
+        },
+        "Role" : {
+          "Ref" : "ServiceRole"
+        },
+        "DeploymentConfiguration" : {
+          "MaximumPercent" : {
+            "Ref" : "MaximumPercent"
+          },
+          "MinimumHealthyPercent" : {
+            "Ref" : "MinimumHealthyPercent"
+          }
+        },
+        "TaskDefinition" : {
+          "Ref" : "TaskDefinition"
+        },
+        "LoadBalancers" : [ {
+          "ContainerName" : {
+            "Ref" : "ServiceName"
+          },
+          "ContainerPort" : {
+            "Ref" : "ContainerPort"
+          },
+          "TargetGroupArn" : {
+            "Ref" : "TargetGroup"
+          }
+        } ]
+      }
+    }
+  },
+  "Outputs" : {
+    "ServiceName" : {
+      "Description" : "Reference to the service name",
+      "Value" : {
+        "Fn::GetAtt" : [ "Service", "Name" ]
+      },
+      "Export" : {
+        "Name" : {
+          "Fn::Sub" : "${ApplicationName}:${EnvironmentName}:${ServiceName}"
+        }
+      }
+    }
+  }
+}

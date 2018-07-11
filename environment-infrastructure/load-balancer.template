@@ -1,0 +1,181 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+  "Description" : "This template deploys internet facing and internal Application Load Balancer that exposes our various ECS services.",
+  "Parameters" : {
+    "ApplicationName" : {
+      "Description" : "An Application name that will be prefixed to resource names",
+      "Type" : "String"
+    },
+    "EnvironmentName" : {
+      "Description" : "An Environment name that will be prefixed to resource names",
+      "Type" : "String"
+    },
+    "CertificateARN" : {
+      "Description" : "Enter a Certifiate ARN which will be used with the Application Load Balancer",
+      "Type" : "String"
+    },
+    "VPC" : {
+      "Type" : "AWS::EC2::VPC::Id",
+      "Description" : "Choose which VPC the Application Load Balancer should be deployed to"
+    },
+    "Subnets" : {
+      "Description" : "Choose which subnets the Application Load Balancer should be deployed to",
+      "Type" : "List<AWS::EC2::Subnet::Id>"
+    },
+    "SecurityGroup" : {
+      "Description" : "Select the Security Group to apply to the Application Load Balancer",
+      "Type" : "AWS::EC2::SecurityGroup::Id"
+    },
+    "InternalLoadBalancerSecurityGroup" : {
+      "Description" : "Select the Security Group to apply to the Internal Application Load Balancer",
+      "Type" : "AWS::EC2::SecurityGroup::Id"
+    }
+  },
+  "Resources" : {
+    "LoadBalancer" : {
+      "Type" : "AWS::ElasticLoadBalancingV2::LoadBalancer",
+      "Properties" : {
+        "Name" : {
+          "Fn::Sub" : "alb-${ApplicationName}-${EnvironmentName}"
+        },
+        "Subnets" : {
+          "Ref" : "Subnets"
+        },
+        "SecurityGroups" : [ {
+          "Ref" : "SecurityGroup"
+        } ],
+        "LoadBalancerAttributes" : [ {
+          "Key" : "idle_timeout.timeout_seconds",
+          "Value" : "600"
+        } ],
+        "Tags" : [ {
+          "Key" : "Name",
+          "Value" : {
+            "Fn::Join" : [ "-", [ "alb", {
+              "Ref" : "ApplicationName"
+            }, {
+              "Ref" : "EnvironmentName"
+            } ] ]
+          }
+        } ]
+      }
+    },
+    "LoadBalancerListener" : {
+      "Type" : "AWS::ElasticLoadBalancingV2::Listener",
+      "Properties" : {
+        "LoadBalancerArn" : {
+          "Ref" : "LoadBalancer"
+        },
+        "Certificates" : [ {
+          "CertificateArn" : {
+            "Ref" : "CertificateARN"
+          }
+        } ],
+        "Port" : 443,
+        "Protocol" : "HTTPS",
+        "DefaultActions" : [ {
+          "Type" : "forward",
+          "TargetGroupArn" : {
+            "Ref" : "DefaultTargetGroup"
+          }
+        } ]
+      }
+    },
+    "DefaultTargetGroup" : {
+      "Type" : "AWS::ElasticLoadBalancingV2::TargetGroup",
+      "Properties" : {
+        "Name" : {
+          "Fn::Sub" : "tg-${ApplicationName}-${EnvironmentName}-default"
+        },
+        "VpcId" : {
+          "Ref" : "VPC"
+        },
+        "Port" : 80,
+        "Protocol" : "HTTP"
+      }
+    },
+    "InternalLoadBalancer" : {
+      "Type" : "AWS::ElasticLoadBalancingV2::LoadBalancer",
+      "Properties" : {
+        "Name" : {
+          "Fn::Sub" : "alb-internal-${ApplicationName}-${EnvironmentName}"
+        },
+        "Type" : "application",
+        "Scheme" : "internal",
+        "Subnets" : {
+          "Ref" : "Subnets"
+        },
+        "SecurityGroups" : [ {
+          "Ref" : "InternalLoadBalancerSecurityGroup"
+        } ],
+        "LoadBalancerAttributes" : [ {
+          "Key" : "idle_timeout.timeout_seconds",
+          "Value" : "600"
+        } ],
+        "Tags" : [ {
+          "Key" : "Name",
+          "Value" : {
+            "Fn::Join" : [ "-", [ "alb", {
+              "Ref" : "ApplicationName"
+            }, {
+              "Ref" : "EnvironmentName"
+            } ] ]
+          }
+        } ]
+      }
+    }
+  },
+  "Outputs" : {
+    "LoadBalancer" : {
+      "Description" : "A reference to the Application Load Balancer",
+      "Value" : {
+        "Ref" : "LoadBalancer"
+      },
+      "Export" : {
+        "Name" : {
+          "Fn::Join" : [ ":", [ {
+            "Ref" : "ApplicationName"
+          }, {
+            "Ref" : "EnvironmentName"
+          }, "LoadBalancer" ] ]
+        }
+      }
+    },
+    "LoadBalancerUrl" : {
+      "Description" : "The URL of the ALB",
+      "Value" : {
+        "Fn::GetAtt" : [ "LoadBalancer", "DNSName" ]
+      }
+    },
+    "Listener" : {
+      "Description" : "A reference to a port 443 listener",
+      "Value" : {
+        "Ref" : "LoadBalancerListener"
+      },
+      "Export" : {
+        "Name" : {
+          "Fn::Join" : [ ":", [ {
+            "Ref" : "ApplicationName"
+          }, {
+            "Ref" : "EnvironmentName"
+          }, "ExternalLoadBalancerListener" ] ]
+        }
+      }
+    },
+    "InternalLoadBalancerARN" : {
+      "Description" : "A reference to the internal load balancer",
+      "Value" : {
+        "Ref" : "InternalLoadBalancer"
+      },
+      "Export" : {
+        "Name" : {
+          "Fn::Join" : [ ":", [ {
+            "Ref" : "ApplicationName"
+          }, {
+            "Ref" : "EnvironmentName"
+          }, "InternalLoadBalancerARN" ] ]
+        }
+      }
+    }
+  }
+}

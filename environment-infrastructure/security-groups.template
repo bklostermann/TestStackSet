@@ -1,0 +1,181 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+  "Description" : "This template contains the security groups required by our entire stack. We create them in a seperate nested template, so they can be referenced by all of the other nested templates.",
+  "Parameters" : {
+    "ApplicationName" : {
+      "Description" : "An Application name that will be prefixed to resource names",
+      "Type" : "String"
+    },
+    "EnvironmentName" : {
+      "Description" : "An Environment name that will be prefixed to resource names",
+      "Type" : "String"
+    },
+    "VPC" : {
+      "Type" : "AWS::EC2::VPC::Id",
+      "Description" : "Choose which VPC the security groups should be deployed to"
+    },
+    "RedisSecurityGroup" : {
+      "Description" : "Redis security group",
+      "Type" : "AWS::EC2::SecurityGroup::Id"
+    }
+  },
+  "Resources" : {
+    "ECSHostSecurityGroup" : {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "VpcId" : {
+          "Ref" : "VPC"
+        },
+        "GroupDescription" : "Access to the ECS hosts and the tasks/containers that run on them",
+        "SecurityGroupIngress" : [ {
+          "CidrIp" : "192.168.0.0/16",
+          "IpProtocol" : "tcp",
+          "FromPort" : "22",
+          "ToPort" : "22",
+          "Description" : "Allow Traffic from ED"
+        }, {
+          "SourceSecurityGroupId" : {
+            "Ref" : "LoadBalancerSecurityGroup"
+          },
+          "IpProtocol" : -1,
+          "Description" : "Open to the application load balancer"
+        } ],
+        "Tags" : [ {
+          "Key" : "Name",
+          "Value" : {
+            "Fn::Join" : [ "_", [ "sg_ecs", {
+              "Ref" : "ApplicationName"
+            }, {
+              "Ref" : "EnvironmentName"
+            } ] ]
+          }
+        } ]
+      }
+    },
+    "LoadBalancerSecurityGroup" : {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "VpcId" : {
+          "Ref" : "VPC"
+        },
+        "GroupDescription" : "Access to the load balancer that sits in front of ECS",
+        "SecurityGroupIngress" : [ {
+          "CidrIp" : "0.0.0.0/0",
+          "IpProtocol" : "tcp",
+          "FromPort" : "443",
+          "ToPort" : "443",
+          "Description" : "Fully open to web on port 443"
+        } ],
+        "Tags" : [ {
+          "Key" : "Name",
+          "Value" : {
+            "Fn::Join" : [ "_", [ "sg_alb", {
+              "Ref" : "ApplicationName"
+            }, {
+              "Ref" : "EnvironmentName"
+            } ] ]
+          }
+        } ]
+      }
+    },
+    "InternalLoadBalancerSecurityGroup" : {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "VpcId" : {
+          "Ref" : "VPC"
+        },
+        "GroupDescription" : "Access to the internal load balancer that sits in front of ECS",
+        "SecurityGroupIngress" : [ {
+          "Description" : "Open to load balancer",
+          "IpProtocol" : "tcp",
+          "FromPort" : "0",
+          "ToPort" : "65535",
+          "SourceSecurityGroupId" : {
+            "Ref" : "LoadBalancerSecurityGroup"
+          }
+        } ],
+        "Tags" : [ {
+          "Key" : "Name",
+          "Value" : {
+            "Fn::Join" : [ "_", [ "sg_alb_internal", {
+              "Ref" : "ApplicationName"
+            }, {
+              "Ref" : "EnvironmentName"
+            } ] ]
+          }
+        } ]
+      }
+    },
+    "InternalALBtoECSSecurityGroupIngress" : {
+      "Type" : "AWS::EC2::SecurityGroupIngress",
+      "Properties" : {
+        "GroupId" : {
+          "Ref" : "ECSHostSecurityGroup"
+        },
+        "Description" : {
+          "Fn::Sub" : "Open to the internal ALB"
+        },
+        "IpProtocol" : "tcp",
+        "FromPort" : "0",
+        "ToPort" : "65535",
+        "SourceSecurityGroupId" : {
+          "Ref" : "InternalLoadBalancerSecurityGroup"
+        }
+      }
+    },
+    "ECStoInternalALBSecurityGroupIngress" : {
+      "Type" : "AWS::EC2::SecurityGroupIngress",
+      "Properties" : {
+        "GroupId" : {
+          "Ref" : "InternalLoadBalancerSecurityGroup"
+        },
+        "Description" : {
+          "Fn::Sub" : "Open to ECS cluster"
+        },
+        "IpProtocol" : "tcp",
+        "FromPort" : "0",
+        "ToPort" : "65535",
+        "SourceSecurityGroupId" : {
+          "Ref" : "ECSHostSecurityGroup"
+        }
+      }
+    },
+    "ECStoRedisSecurityGroupIngress" : {
+      "Type" : "AWS::EC2::SecurityGroupIngress",
+      "Properties" : {
+        "GroupId" : {
+          "Ref" : "RedisSecurityGroup"
+        },
+        "Description" : {
+          "Fn::Sub" : "Allow traffic from ECS cluster for ${ApplicationName} in ${EnvironmentName}"
+        },
+        "IpProtocol" : "tcp",
+        "FromPort" : "6379",
+        "ToPort" : "6379",
+        "SourceSecurityGroupId" : {
+          "Ref" : "ECSHostSecurityGroup"
+        }
+      }
+    }
+  },
+  "Outputs" : {
+    "ECSHostSecurityGroup" : {
+      "Description" : "A reference to the security group for ECS hosts",
+      "Value" : {
+        "Ref" : "ECSHostSecurityGroup"
+      }
+    },
+    "LoadBalancerSecurityGroup" : {
+      "Description" : "A reference to the security group for load balancers",
+      "Value" : {
+        "Ref" : "LoadBalancerSecurityGroup"
+      }
+    },
+    "InternalLoadBalancerSecurityGroup" : {
+      "Description" : "A reference to the security group for internal load balancers",
+      "Value" : {
+        "Ref" : "InternalLoadBalancerSecurityGroup"
+      }
+    }
+  }
+}

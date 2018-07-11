@@ -1,0 +1,634 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+  "Description" : "Creates all ECS services",
+  "Parameters" : {
+    "BaseTemplateURL" : {
+      "Description" : "Location of nested CloudFormation templates",
+      "Type" : "String"
+    },
+    "ApplicationName" : {
+      "Description" : "An Application name that will be prefixed to resource names",
+      "Type" : "String"
+    },
+    "EnvironmentName" : {
+      "Description" : "An Environment name that will be prefixed to resource names",
+      "Type" : "String"
+    },
+    "VPC" : {
+      "Description" : "Choose which VPC the security groups should be deployed to",
+      "Type" : "AWS::EC2::VPC::Id"
+    },
+    "ClusterSize" : {
+      "Description" : "Cluster size used to make decisions about number of services to run",
+      "Type" : "Number"
+    },
+    "ClusterName" : {
+      "Description" : "Cluster to create the service in",
+      "Type" : "String"
+    },
+    "ECSLogGroup" : {
+      "Description" : "Log group to use for task definition logs",
+      "Type" : "String"
+    },
+    "ListenerArn" : {
+      "Description" : "Listener Arn of the application load balancer (internet-facing)",
+      "Type" : "String"
+    },
+    "InternalLoadBalancerARN" : {
+      "Description" : "Internal load balancer Arn",
+      "Type" : "String"
+    },
+    "GlobalSearchIndexerTaskRoleARN" : {
+      "Description" : "Task role for Global Search Indexer",
+      "Type" : "String"
+    },
+    "GlobalSearchSynchronizerTaskRoleARN" : {
+      "Description" : "Task role for Global Search Synchronizer",
+      "Type" : "String"
+    },
+    "FrontendGlobalSearchImageTag" : {
+      "Description" : "Image tag for frontend global search",
+      "Type" : "String",
+      "Default" : "latest"
+    },
+    "FrontendBillingImageTag" : {
+      "Description" : "Image tag for frontend billing",
+      "Type" : "String",
+      "Default" : "latest"
+    },
+    "FrontendChangesImageTag" : {
+      "Description" : "Image tag for frontend changes",
+      "Type" : "String",
+      "Default" : "latest"
+    },
+    "FrontendInvoicesImageTag" : {
+      "Description" : "Image tag for frontend invoices",
+      "Type" : "String",
+      "Default" : "latest"
+    },
+    "FrontendUserRolesImageTag" : {
+      "Description" : "Image tag for frontend user roles",
+      "Type" : "String",
+      "Default" : "latest"
+    },
+    "AuthServerImageTag" : {
+      "Description" : "Image tag for auth server",
+      "Type" : "String",
+      "Default" : "latest"
+    },
+    "AccessControlServiceImageTag" : {
+      "Description" : "Image tag for access control service",
+      "Type" : "String",
+      "Default" : "latest"
+    },
+    "GlobalSearchClientImageTag" : {
+      "Description" : "Image tag for global search client service",
+      "Type" : "String",
+      "Default" : "latest"
+    },
+    "GlobalSearchIndexerImageTag" : {
+      "Description" : "Image tag for global search indexer service",
+      "Type" : "String",
+      "Default" : "latest"
+    },
+    "GlobalSearchSynchronizerImageTag" : {
+      "Description" : "Image tag for global search synchronizer service",
+      "Type" : "String",
+      "Default" : "latest"
+    },
+    "RunTasks" : {
+      "Description" : "Set to No if you want services created but no running tasks.",
+      "Type" : "String",
+      "Default" : "Yes"
+    }
+  },
+  "Conditions" : {
+    "NoRunningTasks" : {
+      "Fn::Equals" : [ {
+        "Ref" : "RunTasks"
+      }, "No" ]
+    },
+    "SmallCluster" : {
+      "Fn::Equals" : [ {
+        "Ref" : "ClusterSize"
+      }, 1 ]
+    }
+  },
+  "Resources" : {
+    "ServiceRole" : {
+      "Type" : "AWS::IAM::Role",
+      "Properties" : {
+        "AssumeRolePolicyDocument" : {
+          "Version" : "2008-10-17",
+          "Statement" : [ {
+            "Sid" : "",
+            "Effect" : "Allow",
+            "Principal" : {
+              "Service" : "ecs.amazonaws.com"
+            },
+            "Action" : "sts:AssumeRole"
+          } ]
+        },
+        "ManagedPolicyArns" : [ "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceRole" ]
+      }
+    },
+    "FrontendGlobalSearchService" : {
+      "Type" : "AWS::CloudFormation::Stack",
+      "Properties" : {
+        "TemplateURL" : {
+          "Fn::Sub" : "${BaseTemplateURL}/ecs-public-service.template"
+        },
+        "Parameters" : {
+          "ApplicationName" : {
+            "Ref" : "ApplicationName"
+          },
+          "EnvironmentName" : {
+            "Ref" : "EnvironmentName"
+          },
+          "ServiceName" : "frontend-globalsearch",
+          "ServiceShortName" : "fegs",
+          "ServiceDNS" : {
+            "Fn::Sub" : "${EnvironmentName}-globalsearch.gatethree.com"
+          },
+          "Priority" : 10,
+          "ClusterName" : {
+            "Ref" : "ClusterName"
+          },
+          "LogGroup" : {
+            "Ref" : "ECSLogGroup"
+          },
+          "TargetGroupVPC" : {
+            "Ref" : "VPC"
+          },
+          "ListenerArn" : {
+            "Ref" : "ListenerArn"
+          },
+          "DesiredCount" : {
+            "Fn::If" : [ "NoRunningTasks", 0, 1 ]
+          },
+          "MaximumPercent" : {
+            "Fn::If" : [ "SmallCluster", 100, 200 ]
+          },
+          "MinimumHealthyPercent" : {
+            "Fn::If" : [ "SmallCluster", 0, 50 ]
+          },
+          "ServiceRole" : {
+            "Ref" : "ServiceRole"
+          },
+          "ContainerImage" : "966529790592.dkr.ecr.us-east-1.amazonaws.com/gate-three/frontend-globalsearch",
+          "ContainerImageTag" : {
+            "Ref" : "FrontendGlobalSearchImageTag"
+          }
+        }
+      }
+    },
+    "FrontendBillingService" : {
+      "Type" : "AWS::CloudFormation::Stack",
+      "Properties" : {
+        "TemplateURL" : {
+          "Fn::Sub" : "${BaseTemplateURL}/ecs-public-service.template"
+        },
+        "Parameters" : {
+          "ApplicationName" : {
+            "Ref" : "ApplicationName"
+          },
+          "EnvironmentName" : {
+            "Ref" : "EnvironmentName"
+          },
+          "ServiceName" : "frontend-billing",
+          "ServiceShortName" : "febill",
+          "ServiceDNS" : {
+            "Fn::Sub" : "${EnvironmentName}-billing.gatethree.com"
+          },
+          "Priority" : 11,
+          "ClusterName" : {
+            "Ref" : "ClusterName"
+          },
+          "LogGroup" : {
+            "Ref" : "ECSLogGroup"
+          },
+          "TargetGroupVPC" : {
+            "Ref" : "VPC"
+          },
+          "ListenerArn" : {
+            "Ref" : "ListenerArn"
+          },
+          "DesiredCount" : {
+            "Fn::If" : [ "NoRunningTasks", 0, 1 ]
+          },
+          "MaximumPercent" : {
+            "Fn::If" : [ "SmallCluster", 100, 200 ]
+          },
+          "MinimumHealthyPercent" : {
+            "Fn::If" : [ "SmallCluster", 0, 50 ]
+          },
+          "ServiceRole" : {
+            "Ref" : "ServiceRole"
+          },
+          "ContainerImage" : "966529790592.dkr.ecr.us-east-1.amazonaws.com/gate-three/frontend-billing",
+          "ContainerImageTag" : {
+            "Ref" : "FrontendBillingImageTag"
+          },
+          "ContainerMemorySoftLimit" : 512,
+          "ContainerMemoryHardLimit" : 1024
+        }
+      }
+    },
+    "FrontendChangesService" : {
+      "Type" : "AWS::CloudFormation::Stack",
+      "Properties" : {
+        "TemplateURL" : {
+          "Fn::Sub" : "${BaseTemplateURL}/ecs-public-service.template"
+        },
+        "Parameters" : {
+          "ApplicationName" : {
+            "Ref" : "ApplicationName"
+          },
+          "EnvironmentName" : {
+            "Ref" : "EnvironmentName"
+          },
+          "ServiceName" : "frontend-changes",
+          "ServiceShortName" : "fechg",
+          "ServiceDNS" : {
+            "Fn::Sub" : "${EnvironmentName}-changes.gatethree.com"
+          },
+          "Priority" : 12,
+          "ClusterName" : {
+            "Ref" : "ClusterName"
+          },
+          "LogGroup" : {
+            "Ref" : "ECSLogGroup"
+          },
+          "TargetGroupVPC" : {
+            "Ref" : "VPC"
+          },
+          "ListenerArn" : {
+            "Ref" : "ListenerArn"
+          },
+          "DesiredCount" : {
+            "Fn::If" : [ "NoRunningTasks", 0, {
+              "Fn::If" : [ "SmallCluster", 1, 2 ]
+            } ]
+          },
+          "MaximumPercent" : {
+            "Fn::If" : [ "SmallCluster", 100, 200 ]
+          },
+          "MinimumHealthyPercent" : {
+            "Fn::If" : [ "SmallCluster", 0, 50 ]
+          },
+          "ServiceRole" : {
+            "Ref" : "ServiceRole"
+          },
+          "ContainerImage" : "966529790592.dkr.ecr.us-east-1.amazonaws.com/gate-three/frontend-changes",
+          "ContainerImageTag" : {
+            "Ref" : "FrontendChangesImageTag"
+          }
+        }
+      }
+    },
+    "FrontendInvoicesService" : {
+      "Type" : "AWS::CloudFormation::Stack",
+      "Properties" : {
+        "TemplateURL" : {
+          "Fn::Sub" : "${BaseTemplateURL}/ecs-public-service.template"
+        },
+        "Parameters" : {
+          "ApplicationName" : {
+            "Ref" : "ApplicationName"
+          },
+          "EnvironmentName" : {
+            "Ref" : "EnvironmentName"
+          },
+          "ServiceName" : "frontend-invoices",
+          "ServiceShortName" : "feinv",
+          "ServiceDNS" : {
+            "Fn::Sub" : "${EnvironmentName}-invoices.gatethree.com"
+          },
+          "Priority" : 13,
+          "ClusterName" : {
+            "Ref" : "ClusterName"
+          },
+          "LogGroup" : {
+            "Ref" : "ECSLogGroup"
+          },
+          "TargetGroupVPC" : {
+            "Ref" : "VPC"
+          },
+          "ListenerArn" : {
+            "Ref" : "ListenerArn"
+          },
+          "DesiredCount" : {
+            "Fn::If" : [ "NoRunningTasks", 0, {
+              "Fn::If" : [ "SmallCluster", 1, 2 ]
+            } ]
+          },
+          "MaximumPercent" : {
+            "Fn::If" : [ "SmallCluster", 100, 200 ]
+          },
+          "MinimumHealthyPercent" : {
+            "Fn::If" : [ "SmallCluster", 0, 50 ]
+          },
+          "ServiceRole" : {
+            "Ref" : "ServiceRole"
+          },
+          "ContainerImage" : "966529790592.dkr.ecr.us-east-1.amazonaws.com/gate-three/frontend-invoices",
+          "ContainerImageTag" : {
+            "Ref" : "FrontendInvoicesImageTag"
+          }
+        }
+      }
+    },
+    "FrontendUserRolesService" : {
+      "Type" : "AWS::CloudFormation::Stack",
+      "Properties" : {
+        "TemplateURL" : {
+          "Fn::Sub" : "${BaseTemplateURL}/ecs-public-service.template"
+        },
+        "Parameters" : {
+          "ApplicationName" : {
+            "Ref" : "ApplicationName"
+          },
+          "EnvironmentName" : {
+            "Ref" : "EnvironmentName"
+          },
+          "ServiceName" : "frontend-userroles",
+          "ServiceShortName" : "feacm",
+          "ServiceDNS" : {
+            "Fn::Sub" : "${EnvironmentName}-acm.gatethree.com"
+          },
+          "Priority" : 14,
+          "ClusterName" : {
+            "Ref" : "ClusterName"
+          },
+          "LogGroup" : {
+            "Ref" : "ECSLogGroup"
+          },
+          "TargetGroupVPC" : {
+            "Ref" : "VPC"
+          },
+          "TargetGroupPort" : 80,
+          "TargetGroupProtocol" : "HTTP",
+          "TargetGroupHealthCheckProtocol" : "HTTP",
+          "ListenerArn" : {
+            "Ref" : "ListenerArn"
+          },
+          "ServiceRole" : {
+            "Ref" : "ServiceRole"
+          },
+          "ContainerImage" : "966529790592.dkr.ecr.us-east-1.amazonaws.com/gate-three/frontend-userroles",
+          "ContainerImageTag" : {
+            "Ref" : "FrontendUserRolesImageTag"
+          },
+          "DesiredCount" : {
+            "Fn::If" : [ "NoRunningTasks", 0, 1 ]
+          },
+          "MaximumPercent" : {
+            "Fn::If" : [ "SmallCluster", 100, 200 ]
+          },
+          "MinimumHealthyPercent" : {
+            "Fn::If" : [ "SmallCluster", 0, 50 ]
+          }
+        }
+      }
+    },
+    "AuthServer" : {
+      "Type" : "AWS::CloudFormation::Stack",
+      "Properties" : {
+        "TemplateURL" : {
+          "Fn::Sub" : "${BaseTemplateURL}/ecs-public-service.template"
+        },
+        "Parameters" : {
+          "ApplicationName" : {
+            "Ref" : "ApplicationName"
+          },
+          "EnvironmentName" : {
+            "Ref" : "EnvironmentName"
+          },
+          "ServiceName" : "auth-server",
+          "ServiceShortName" : "auth",
+          "ServiceDNS" : {
+            "Fn::Sub" : "${EnvironmentName}-auth.gatethree.com"
+          },
+          "Priority" : 15,
+          "ClusterName" : {
+            "Ref" : "ClusterName"
+          },
+          "LogGroup" : {
+            "Ref" : "ECSLogGroup"
+          },
+          "TargetGroupVPC" : {
+            "Ref" : "VPC"
+          },
+          "TargetGroupPort" : 80,
+          "TargetGroupProtocol" : "HTTP",
+          "TargetGroupHealthCheckProtocol" : "HTTP",
+          "ListenerArn" : {
+            "Ref" : "ListenerArn"
+          },
+          "ServiceRole" : {
+            "Ref" : "ServiceRole"
+          },
+          "ContainerImage" : "966529790592.dkr.ecr.us-east-1.amazonaws.com/gate-three/auth-server",
+          "ContainerImageTag" : {
+            "Ref" : "AuthServerImageTag"
+          },
+          "ContainerPort" : 4250,
+          "DesiredCount" : {
+            "Fn::If" : [ "NoRunningTasks", 0, 1 ]
+          },
+          "MaximumPercent" : {
+            "Fn::If" : [ "SmallCluster", 100, 200 ]
+          },
+          "MinimumHealthyPercent" : {
+            "Fn::If" : [ "SmallCluster", 0, 50 ]
+          }
+        }
+      }
+    },
+    "AccessControlService" : {
+      "Type" : "AWS::CloudFormation::Stack",
+      "Properties" : {
+        "TemplateURL" : {
+          "Fn::Sub" : "${BaseTemplateURL}/ecs-internal-service.template"
+        },
+        "Parameters" : {
+          "ApplicationName" : {
+            "Ref" : "ApplicationName"
+          },
+          "EnvironmentName" : {
+            "Ref" : "EnvironmentName"
+          },
+          "ServiceName" : "service-accesscontrol",
+          "ServiceShortName" : "srvacm",
+          "ClusterName" : {
+            "Ref" : "ClusterName"
+          },
+          "LogGroup" : {
+            "Ref" : "ECSLogGroup"
+          },
+          "TargetGroupVPC" : {
+            "Ref" : "VPC"
+          },
+          "TargetGroupPort" : 5001,
+          "TargetGroupProtocol" : "HTTP",
+          "TargetGroupHealthCheck" : "/health",
+          "TargetGroupHealthCheckProtocol" : "HTTP",
+          "ApplicationLoadBalancerArn" : {
+            "Ref" : "InternalLoadBalancerARN"
+          },
+          "ListenerPort" : 5001,
+          "ListenerProtocol" : "HTTP",
+          "ServiceRole" : {
+            "Ref" : "ServiceRole"
+          },
+          "ContainerImage" : "966529790592.dkr.ecr.us-east-1.amazonaws.com/gate-three/service-accesscontrol",
+          "ContainerImageTag" : {
+            "Ref" : "AccessControlServiceImageTag"
+          },
+          "ContainerPort" : 5001,
+          "ContainerMemorySoftLimit" : 1024,
+          "ContainerMemoryHardLimit" : 1536,
+          "DesiredCount" : {
+            "Fn::If" : [ "NoRunningTasks", 0, 1 ]
+          },
+          "MaximumPercent" : {
+            "Fn::If" : [ "SmallCluster", 100, 200 ]
+          },
+          "MinimumHealthyPercent" : {
+            "Fn::If" : [ "SmallCluster", 0, 50 ]
+          }
+        }
+      }
+    },
+    "GlobalSearchClientService" : {
+      "Type" : "AWS::CloudFormation::Stack",
+      "Properties" : {
+        "TemplateURL" : {
+          "Fn::Sub" : "${BaseTemplateURL}/ecs-internal-service.template"
+        },
+        "Parameters" : {
+          "ApplicationName" : {
+            "Ref" : "ApplicationName"
+          },
+          "EnvironmentName" : {
+            "Ref" : "EnvironmentName"
+          },
+          "ServiceName" : "globalsearch-client",
+          "ServiceShortName" : "gscli",
+          "ClusterName" : {
+            "Ref" : "ClusterName"
+          },
+          "LogGroup" : {
+            "Ref" : "ECSLogGroup"
+          },
+          "TargetGroupVPC" : {
+            "Ref" : "VPC"
+          },
+          "TargetGroupPort" : 9001,
+          "TargetGroupProtocol" : "HTTP",
+          "TargetGroupHealthCheck" : "/health",
+          "TargetGroupHealthCheckProtocol" : "HTTP",
+          "ApplicationLoadBalancerArn" : {
+            "Ref" : "InternalLoadBalancerARN"
+          },
+          "ListenerPort" : 9001,
+          "ListenerProtocol" : "HTTP",
+          "ServiceRole" : {
+            "Ref" : "ServiceRole"
+          },
+          "ContainerImage" : "966529790592.dkr.ecr.us-east-1.amazonaws.com/gate-three/globalsearch-client",
+          "ContainerImageTag" : {
+            "Ref" : "GlobalSearchClientImageTag"
+          },
+          "ContainerPort" : 9001,
+          "ContainerMemorySoftLimit" : 1024,
+          "ContainerMemoryHardLimit" : 1536,
+          "DesiredCount" : {
+            "Fn::If" : [ "NoRunningTasks", 0, 1 ]
+          },
+          "MaximumPercent" : {
+            "Fn::If" : [ "SmallCluster", 100, 200 ]
+          },
+          "MinimumHealthyPercent" : {
+            "Fn::If" : [ "SmallCluster", 0, 50 ]
+          }
+        }
+      }
+    },
+    "GlobalSearchIndexerService" : {
+      "Type" : "AWS::CloudFormation::Stack",
+      "Properties" : {
+        "TemplateURL" : {
+          "Fn::Sub" : "${BaseTemplateURL}/ecs-batch-service.template"
+        },
+        "Parameters" : {
+          "ApplicationName" : {
+            "Ref" : "ApplicationName"
+          },
+          "EnvironmentName" : {
+            "Ref" : "EnvironmentName"
+          },
+          "ServiceName" : "globalsearch-indexer",
+          "ServiceShortName" : "gsidx",
+          "ClusterName" : {
+            "Ref" : "ClusterName"
+          },
+          "LogGroup" : {
+            "Ref" : "ECSLogGroup"
+          },
+          "DesiredCount" : {
+            "Fn::If" : [ "NoRunningTasks", 0, 1 ]
+          },
+          "TaskRoleArn" : {
+            "Ref" : "GlobalSearchIndexerTaskRoleARN"
+          },
+          "ContainerImage" : "966529790592.dkr.ecr.us-east-1.amazonaws.com/gate-three/globalsearch-indexer",
+          "ContainerImageTag" : {
+            "Ref" : "GlobalSearchIndexerImageTag"
+          },
+          "ContainerPort" : 10001,
+          "ContainerMemorySoftLimit" : 1024,
+          "ContainerMemoryHardLimit" : 1536
+        }
+      }
+    },
+    "GlobalSearchSynchronizerService" : {
+      "Type" : "AWS::CloudFormation::Stack",
+      "Properties" : {
+        "TemplateURL" : {
+          "Fn::Sub" : "${BaseTemplateURL}/ecs-batch-service.template"
+        },
+        "Parameters" : {
+          "ApplicationName" : {
+            "Ref" : "ApplicationName"
+          },
+          "EnvironmentName" : {
+            "Ref" : "EnvironmentName"
+          },
+          "ServiceName" : "globalsearch-synchronizer",
+          "ServiceShortName" : "gssync",
+          "ClusterName" : {
+            "Ref" : "ClusterName"
+          },
+          "LogGroup" : {
+            "Ref" : "ECSLogGroup"
+          },
+          "DesiredCount" : {
+            "Fn::If" : [ "NoRunningTasks", 0, 1 ]
+          },
+          "TaskRoleArn" : {
+            "Ref" : "GlobalSearchSynchronizerTaskRoleARN"
+          },
+          "ContainerImage" : "966529790592.dkr.ecr.us-east-1.amazonaws.com/gate-three/globalsearch-synchronizer",
+          "ContainerImageTag" : {
+            "Ref" : "GlobalSearchSynchronizerImageTag"
+          },
+          "ContainerCPU" : 1,
+          "ContainerPort" : 10001,
+          "ContainerMemorySoftLimit" : 1024,
+          "ContainerMemoryHardLimit" : 1536
+        }
+      }
+    }
+  }
+}

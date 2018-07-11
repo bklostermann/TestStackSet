@@ -1,0 +1,195 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+  "Description" : "Creates application integration services such as SQS",
+  "Parameters" : {
+    "ApplicationName" : {
+      "Description" : "An Application name that will be prefixed to resource names",
+      "Type" : "String"
+    },
+    "EnvironmentName" : {
+      "Description" : "An Environment name that will be prefixed to resource names",
+      "Type" : "String"
+    },
+    "ElasticsearchDomainARN" : {
+      "Description" : "Elasticsearch domain ARN",
+      "Type" : "String"
+    },
+    "ECSRoleName" : {
+      "Description" : "Role name of the ECS host to add policies to",
+      "Type" : "String"
+    }
+  },
+  "Mappings" : { },
+  "Resources" : {
+    "GlobalSearchIndexerQueue" : {
+      "Type" : "AWS::SQS::Queue",
+      "Properties" : {
+        "DelaySeconds" : "0",
+        "MaximumMessageSize" : "262144",
+        "MessageRetentionPeriod" : "1209600",
+        "ReceiveMessageWaitTimeSeconds" : "0",
+        "VisibilityTimeout" : "30",
+        "RedrivePolicy" : {
+          "maxReceiveCount" : 3,
+          "deadLetterTargetArn" : {
+            "Fn::GetAtt" : [ "GlobalSearchIndexerDeadLetterQueue", "Arn" ]
+          }
+        }
+      }
+    },
+    "GlobalSearchIndexerDeadLetterQueue" : {
+      "Type" : "AWS::SQS::Queue",
+      "Properties" : {
+        "DelaySeconds" : "0",
+        "MaximumMessageSize" : "262144",
+        "MessageRetentionPeriod" : "1209600",
+        "ReceiveMessageWaitTimeSeconds" : "0",
+        "VisibilityTimeout" : "30"
+      }
+    },
+    "GlobalSearchIndexerRole" : {
+      "Type" : "AWS::IAM::Role",
+      "Properties" : {
+        "AssumeRolePolicyDocument" : {
+          "Version" : "2012-10-17",
+          "Statement" : [ {
+            "Sid" : "",
+            "Effect" : "Allow",
+            "Principal" : {
+              "Service" : "ecs-tasks.amazonaws.com"
+            },
+            "Action" : "sts:AssumeRole"
+          } ]
+        },
+        "Policies" : [ {
+          "PolicyName" : "root",
+          "PolicyDocument" : {
+            "Version" : "2012-10-17",
+            "Statement" : [ {
+              "Sid" : "VisualEditor0",
+              "Effect" : "Allow",
+              "Action" : [ "sqs:DeleteMessage", "sqs:GetQueueUrl", "sqs:ChangeMessageVisibility", "sqs:DeleteMessageBatch", "sqs:ReceiveMessage", "sqs:ChangeMessageVisibilityBatch" ],
+              "Resource" : {
+                "Fn::GetAtt" : [ "GlobalSearchIndexerQueue", "Arn" ]
+              }
+            }, {
+              "Sid" : "VisualEditor1",
+              "Effect" : "Allow",
+              "Action" : [ "es:ESHttpHead", "es:ListDomainNames", "es:ESHttpPost", "es:ESHttpGet", "es:ESHttpPut" ],
+              "Resource" : {
+                "Ref" : "ElasticsearchDomainARN"
+              }
+            }, {
+              "Effect" : "Allow",
+              "Action" : "s3:ListAllMyBuckets",
+              "Resource" : "arn:aws:s3:::*"
+            }, {
+              "Effect" : "Allow",
+              "Action" : [ "s3:ListBucket", "s3:Get*", "s3:Put*" ],
+              "Resource" : [ "arn:aws:s3:::ed-g3-configuration", "arn:aws:s3:::ed-g3-configuration/*" ]
+            } ]
+          }
+        } ]
+      }
+    },
+    "GlobalSearchSynchronizerRole" : {
+      "Type" : "AWS::IAM::Role",
+      "Properties" : {
+        "AssumeRolePolicyDocument" : {
+          "Version" : "2012-10-17",
+          "Statement" : [ {
+            "Sid" : "",
+            "Effect" : "Allow",
+            "Principal" : {
+              "Service" : "ecs-tasks.amazonaws.com"
+            },
+            "Action" : "sts:AssumeRole"
+          } ]
+        },
+        "Policies" : [ {
+          "PolicyName" : "root",
+          "PolicyDocument" : {
+            "Version" : "2012-10-17",
+            "Statement" : [ {
+              "Effect" : "Allow",
+              "Action" : "s3:ListAllMyBuckets",
+              "Resource" : "arn:aws:s3:::*"
+            }, {
+              "Effect" : "Allow",
+              "Action" : [ "s3:ListBucket", "s3:Get*", "s3:Put*" ],
+              "Resource" : [ "arn:aws:s3:::ed-g3-configuration", "arn:aws:s3:::ed-g3-configuration/*" ]
+            } ]
+          }
+        } ]
+      }
+    },
+    "SQSGlobalSearchSendMessagesPolicy" : {
+      "Type" : "AWS::IAM::Policy",
+      "Properties" : {
+        "PolicyName" : "SQSGlobalSearchSendMessagesPolicy",
+        "PolicyDocument" : {
+          "Version" : "2012-10-17",
+          "Statement" : [ {
+            "Sid" : "VisualEditor0",
+            "Effect" : "Allow",
+            "Action" : [ "sqs:DeleteMessage", "sqs:GetQueueUrl", "sqs:ChangeMessageVisibility", "sqs:DeleteMessageBatch", "sqs:SendMessage", "sqs:ChangeMessageVisibilityBatch" ],
+            "Resource" : {
+              "Fn::GetAtt" : [ "GlobalSearchIndexerQueue", "Arn" ]
+            }
+          } ]
+        },
+        "Roles" : [ {
+          "Ref" : "GlobalSearchSynchronizerRole"
+        }, {
+          "Ref" : "ECSRoleName"
+        } ]
+      },
+      "Metadata" : {
+        "Purpose" : "The policy is required as a workaround for Logstash utlity used by Global Search synchronizer that can only get permissions from the EC2 host and not the task role assigned to the container"
+      }
+    }
+  },
+  "Outputs" : {
+    "GlobalSearchIndexerQueueURL" : {
+      "Description" : "Reference to Global Search Indexer queue URL",
+      "Value" : {
+        "Ref" : "GlobalSearchIndexerQueue"
+      },
+      "Export" : {
+        "Name" : {
+          "Fn::Sub" : "${ApplicationName}:${EnvironmentName}:GlobalSearchIndexerQueueURL"
+        }
+      }
+    },
+    "GlobalSearchIndexerQueueARN" : {
+      "Description" : "Reference to Global Search Indexer queue ARN",
+      "Value" : {
+        "Fn::GetAtt" : [ "GlobalSearchIndexerQueue", "Arn" ]
+      }
+    },
+    "GlobalSearchIndexerDeadLetterQueueURL" : {
+      "Description" : "Reference to Global Search Indexer dead letter queue URL",
+      "Value" : {
+        "Ref" : "GlobalSearchIndexerDeadLetterQueue"
+      }
+    },
+    "GlobalSearchIndexerDeadLetterQueueARN" : {
+      "Description" : "Reference to Global Search Indexer dead letter queue ARN",
+      "Value" : {
+        "Fn::GetAtt" : [ "GlobalSearchIndexerDeadLetterQueue", "Arn" ]
+      }
+    },
+    "GlobalSearchIndexerRoleARN" : {
+      "Description" : "Reference to Global Search Indexer role ARN",
+      "Value" : {
+        "Fn::GetAtt" : [ "GlobalSearchIndexerRole", "Arn" ]
+      }
+    },
+    "GlobalSearchSynchronizerRoleARN" : {
+      "Description" : "Reference to Global Search Synchronizer role ARN",
+      "Value" : {
+        "Fn::GetAtt" : [ "GlobalSearchSynchronizerRole", "Arn" ]
+      }
+    }
+  }
+}

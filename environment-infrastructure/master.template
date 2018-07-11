@@ -1,0 +1,324 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+  "Description" : "This template deploys a new Gate Three environment to an existing VPC",
+  "Parameters" : {
+    "BaseTemplateURL" : {
+      "Description" : "Location of nested CloudFormation templates",
+      "Type" : "String",
+      "Default" : "https://s3.amazonaws.com/cf-templates.gatethree.com/environment-infrastructure"
+    },
+    "ApplicationName" : {
+      "Description" : "An Application name that will be prefixed to resource names",
+      "Type" : "String",
+      "Default" : "g3",
+      "AllowedValues" : [ "g3" ]
+    },
+    "EnvironmentName" : {
+      "Description" : "An Environment name that will be prefixed to resource names",
+      "Type" : "String",
+      "AllowedValues" : [ "dev", "qa2", "qa1", "uat", "prod" ]
+    },
+    "VPC" : {
+      "Description" : "Choose which VPC the security groups should be deployed to",
+      "Type" : "AWS::EC2::VPC::Id"
+    },
+    "PublicSubnets" : {
+      "Description" : "A list of the public subnets",
+      "Type" : "List<AWS::EC2::Subnet::Id>"
+    },
+    "PrivateSubnets" : {
+      "Description" : "A list of the private subnets",
+      "Type" : "List<AWS::EC2::Subnet::Id>"
+    },
+    "KeyName" : {
+      "Type" : "AWS::EC2::KeyPair::KeyName",
+      "Description" : "Key name to use for Gate Three application EC2 instance",
+      "Default" : "EllisDon-non-prod-linux-keypair"
+    },
+    "InstanceType" : {
+      "Description" : "Which instance type should we use to build the ECS cluster?",
+      "Type" : "String",
+      "Default" : "t2.large"
+    },
+    "ClusterSize" : {
+      "Description" : "How many ECS hosts do you want to initially deploy?",
+      "Type" : "Number",
+      "Default" : 2
+    },
+    "CertificateARN" : {
+      "Description" : "Enter a Certifiate ARN which will be used with the Application Load Balancer",
+      "Type" : "String",
+      "Default" : "arn:aws:acm:us-east-1:966529790592:certificate/068c28a2-0f76-4586-aff2-2a38b2200773"
+    },
+    "ElasticsearchDomainARN" : {
+      "Description" : "Elasticsearch domain ARN",
+      "Type" : "String"
+    },
+    "RedisSecurityGroup" : {
+      "Description" : "Redis security group",
+      "Type" : "AWS::EC2::SecurityGroup::Id"
+    },
+    "RunTasks" : {
+      "Description" : "Set to No if you want services created but no running tasks.",
+      "Type" : "String",
+      "Default" : "Yes"
+    },
+    "FrontendGlobalSearchImageTag" : {
+      "Description" : "Image tag for frontend global search",
+      "Type" : "String",
+      "Default" : "latest"
+    },
+    "FrontendBillingImageTag" : {
+      "Description" : "Image tag for frontend billing",
+      "Type" : "String",
+      "Default" : "latest"
+    },
+    "FrontendChangesImageTag" : {
+      "Description" : "Image tag for frontend changes",
+      "Type" : "String",
+      "Default" : "latest"
+    },
+    "FrontendInvoicesImageTag" : {
+      "Description" : "Image tag for frontend invoices",
+      "Type" : "String",
+      "Default" : "latest"
+    },
+    "FrontendUserRolesImageTag" : {
+      "Description" : "Image tag for frontend user roles",
+      "Type" : "String",
+      "Default" : "latest"
+    },
+    "AuthServerImageTag" : {
+      "Description" : "Image tag for auth server",
+      "Type" : "String",
+      "Default" : "latest"
+    },
+    "AccessControlServiceImageTag" : {
+      "Description" : "Image tag for access control service",
+      "Type" : "String",
+      "Default" : "latest"
+    },
+    "GlobalSearchClientImageTag" : {
+      "Description" : "Image tag for global search client service",
+      "Type" : "String",
+      "Default" : "latest"
+    },
+    "GlobalSearchIndexerImageTag" : {
+      "Description" : "Image tag for global search indexer service",
+      "Type" : "String",
+      "Default" : "latest"
+    },
+    "GlobalSearchSynchronizerImageTag" : {
+      "Description" : "Image tag for global search synchronizer service",
+      "Type" : "String",
+      "Default" : "latest"
+    }
+  },
+  "Resources" : {
+    "SecurityGroups" : {
+      "Type" : "AWS::CloudFormation::Stack",
+      "Properties" : {
+        "TemplateURL" : {
+          "Fn::Sub" : "${BaseTemplateURL}/security-groups.template"
+        },
+        "Parameters" : {
+          "EnvironmentName" : {
+            "Ref" : "EnvironmentName"
+          },
+          "ApplicationName" : {
+            "Ref" : "ApplicationName"
+          },
+          "VPC" : {
+            "Ref" : "VPC"
+          },
+          "RedisSecurityGroup" : {
+            "Ref" : "RedisSecurityGroup"
+          }
+        }
+      }
+    },
+    "ALB" : {
+      "Type" : "AWS::CloudFormation::Stack",
+      "Properties" : {
+        "TemplateURL" : {
+          "Fn::Sub" : "${BaseTemplateURL}/load-balancer.template"
+        },
+        "Parameters" : {
+          "EnvironmentName" : {
+            "Ref" : "EnvironmentName"
+          },
+          "ApplicationName" : {
+            "Ref" : "ApplicationName"
+          },
+          "VPC" : {
+            "Ref" : "VPC"
+          },
+          "Subnets" : {
+            "Fn::Join" : [ ",", {
+              "Ref" : "PublicSubnets"
+            } ]
+          },
+          "CertificateARN" : {
+            "Ref" : "CertificateARN"
+          },
+          "SecurityGroup" : {
+            "Fn::GetAtt" : [ "SecurityGroups", "Outputs.LoadBalancerSecurityGroup" ]
+          },
+          "InternalLoadBalancerSecurityGroup" : {
+            "Fn::GetAtt" : [ "SecurityGroups", "Outputs.InternalLoadBalancerSecurityGroup" ]
+          }
+        }
+      }
+    },
+    "ECS" : {
+      "Type" : "AWS::CloudFormation::Stack",
+      "Properties" : {
+        "TemplateURL" : {
+          "Fn::Sub" : "${BaseTemplateURL}/ecs-cluster.template"
+        },
+        "Parameters" : {
+          "EnvironmentName" : {
+            "Ref" : "EnvironmentName"
+          },
+          "ApplicationName" : {
+            "Ref" : "ApplicationName"
+          },
+          "InstanceType" : {
+            "Ref" : "InstanceType"
+          },
+          "KeyName" : {
+            "Ref" : "KeyName"
+          },
+          "ClusterSize" : {
+            "Ref" : "ClusterSize"
+          },
+          "VPC" : {
+            "Ref" : "VPC"
+          },
+          "SecurityGroup" : {
+            "Fn::GetAtt" : [ "SecurityGroups", "Outputs.ECSHostSecurityGroup" ]
+          },
+          "Subnets" : {
+            "Fn::Join" : [ ",", {
+              "Ref" : "PrivateSubnets"
+            } ]
+          }
+        }
+      }
+    },
+    "ECSLifecycleHook" : {
+      "Type" : "AWS::CloudFormation::Stack",
+      "Properties" : {
+        "TemplateURL" : {
+          "Fn::Sub" : "${BaseTemplateURL}/lifecyclehooks.template"
+        },
+        "Parameters" : {
+          "Cluster" : {
+            "Fn::GetAtt" : [ "ECS", "Outputs.Cluster" ]
+          },
+          "ECSAutoScalingGroupName" : {
+            "Fn::GetAtt" : [ "ECS", "Outputs.ECSAutoScalingGroupName" ]
+          }
+        }
+      }
+    },
+    "AppIntegration" : {
+      "Type" : "AWS::CloudFormation::Stack",
+      "Properties" : {
+        "TemplateURL" : {
+          "Fn::Sub" : "${BaseTemplateURL}/app-integration.template"
+        },
+        "Parameters" : {
+          "EnvironmentName" : {
+            "Ref" : "EnvironmentName"
+          },
+          "ApplicationName" : {
+            "Ref" : "ApplicationName"
+          },
+          "ElasticsearchDomainARN" : {
+            "Ref" : "ElasticsearchDomainARN"
+          },
+          "ECSRoleName" : {
+            "Fn::GetAtt" : [ "ECS", "Outputs.ECSRoleName" ]
+          }
+        }
+      }
+    },
+    "ECSServices" : {
+      "Type" : "AWS::CloudFormation::Stack",
+      "Properties" : {
+        "TemplateURL" : {
+          "Fn::Sub" : "${BaseTemplateURL}/ecs-services.template"
+        },
+        "Parameters" : {
+          "BaseTemplateURL" : {
+            "Ref" : "BaseTemplateURL"
+          },
+          "EnvironmentName" : {
+            "Ref" : "EnvironmentName"
+          },
+          "ApplicationName" : {
+            "Ref" : "ApplicationName"
+          },
+          "VPC" : {
+            "Ref" : "VPC"
+          },
+          "ClusterSize" : {
+            "Ref" : "ClusterSize"
+          },
+          "ClusterName" : {
+            "Fn::GetAtt" : [ "ECS", "Outputs.Cluster" ]
+          },
+          "ECSLogGroup" : {
+            "Fn::GetAtt" : [ "ECS", "Outputs.ECSLogGroup" ]
+          },
+          "ListenerArn" : {
+            "Fn::GetAtt" : [ "ALB", "Outputs.Listener" ]
+          },
+          "InternalLoadBalancerARN" : {
+            "Fn::GetAtt" : [ "ALB", "Outputs.InternalLoadBalancerARN" ]
+          },
+          "GlobalSearchIndexerTaskRoleARN" : {
+            "Fn::GetAtt" : [ "AppIntegration", "Outputs.GlobalSearchIndexerRoleARN" ]
+          },
+          "GlobalSearchSynchronizerTaskRoleARN" : {
+            "Fn::GetAtt" : [ "AppIntegration", "Outputs.GlobalSearchSynchronizerRoleARN" ]
+          },
+          "RunTasks": {
+            "Ref": "RunTasks"
+          },
+          "FrontendGlobalSearchImageTag" : {
+            "Ref" : "FrontendGlobalSearchImageTag"
+          },
+          "FrontendBillingImageTag" : {
+            "Ref" : "FrontendBillingImageTag"
+          },
+          "FrontendChangesImageTag" : {
+            "Ref" : "FrontendChangesImageTag"
+          },
+          "FrontendInvoicesImageTag" : {
+            "Ref" : "FrontendInvoicesImageTag"
+          },
+          "FrontendUserRolesImageTag" : {
+            "Ref" : "FrontendUserRolesImageTag"
+          },
+          "AuthServerImageTag" : {
+            "Ref" : "AuthServerImageTag"
+          },
+          "AccessControlServiceImageTag" : {
+            "Ref" : "AccessControlServiceImageTag"
+          },
+          "GlobalSearchClientImageTag" : {
+            "Ref" : "GlobalSearchClientImageTag"
+          },
+          "GlobalSearchIndexerImageTag" : {
+            "Ref" : "GlobalSearchIndexerImageTag"
+          },
+          "GlobalSearchSynchronizerImageTag" : {
+            "Ref" : "GlobalSearchSynchronizerImageTag"
+          }
+        }
+      }
+    }
+  }
+}
