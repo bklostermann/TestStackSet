@@ -1,5 +1,12 @@
 {
     "Parameters" : {
-
+        "CertificateARN": "arn:aws:acm:us-east-1:093562630078:certificate/a00be284-a8b6-44aa-9271-a8c6c25c2255",
+        "ElasticsearchDomainARN": "arn:aws:es:us-east-1:093562630078:domain/gatethree-globalsearch-prod",
+        "EnvironmentName": "prod",
+        "KeyName": "ed-prod-docker-server-keypair",
+        "PrivateSubnets": "subnet-e442c4ad,subnet-d55d8af8,subnet-ad16c7f6",
+        "PublicSubnets": "subnet-4f00dd14,subnet-705f885d,subnet-0844c241",
+        "RunTasks": "No",
+        "VPC": "vpc-daadafbd"
     }
   }
